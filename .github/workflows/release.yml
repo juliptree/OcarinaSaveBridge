@@ -35,7 +35,7 @@ jobs:
       - name: Store candidate for review (not a GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: OcarinaSaveBridge-1.0.0-windows-candidate
+          name: OcarinaSaveBridge-1.0.1-windows-candidate
           path: candidate/*
           if-no-files-found: error
           retention-days: 14
