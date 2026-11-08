@@ -35,3 +35,23 @@ def test_bounded_thumbnail(tmp_path):
     assert jpeg_bytes(p) == b'\xff\xd8\xffdata\xff\xd9'
     p.write_bytes(b'x' * (2 * 1024 * 1024 + 1))
     assert jpeg_bytes(p) is None
+
+def test_gui_manual_version_is_visible_and_unverified(fixture):
+    app = QApplication.instance() or QApplication([]); configure_app(app)
+    w = Window(auto_detect=False)
+    (fixture[1].parent / 'VERSION').unlink()
+    w.version_mode.setCurrentIndex(1)
+    plan = e.preview(*fixture, manual_version='0.5.0'); w.review_plan(plan)
+    assert 'MANUAL 0.5.0' in w.summary.text() and not w.experimental.isHidden()
+    assert 'manual-unverified' in w.log.toPlainText()
+    w.version_mode.setCurrentIndex(2)
+    assert w.plan is None and not w.go.isEnabled() and not w.manual_version.isHidden()
+    w.close(); app.processEvents()
+
+def test_gui_recognized_version_has_clear_status(fixture):
+    app = QApplication.instance() or QApplication([]); configure_app(app)
+    w = Window(auto_detect=False); w.review_plan(e.preview(*fixture))
+    assert 'RECOGNIZED 0.5.0' in w.summary.text() and 'installation VERSION' in w.summary.text()
+    assert w.experimental.isHidden()
+    w.close(); app.processEvents()
+
