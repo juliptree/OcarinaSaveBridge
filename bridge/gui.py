@@ -191,6 +191,9 @@ class Window(QMainWindow):
             f'\nSource: {wrap(plan["source"])}\n{len(plan["source_files"])} source files → {wrap(Path(plan["profile"]) / "save" / plan["account"])}\n'
             f'Preserve {len(plan["original"]["files"])} original files, including account.uid, native backups and transaction state.\n'
             f'Verified backup location: {wrap(plan["vault"])}\nThe fresh active profile contains only account.uid and this snapshot; full original retained.')
+        linked = sum(x['hardlinked_files'] for x in plan.get('hardlinks', {}).values())
+        if linked:
+            self.summary.setText(self.summary.text() + f'\n{linked} regular-file hardlink paths accepted for read-only inspection. Backups and imported files will be independent copies.')
         slots = sorted({n.split('/')[0] for n in plan['source_files'] if n.startswith('slot_')})
         self.table.setRowCount(len(slots))
         for row, slot in enumerate(slots):
@@ -272,3 +275,4 @@ def main():
     app = QApplication([]); configure_app(app)
     w = Window(); w.show()
     return app.exec()
+
