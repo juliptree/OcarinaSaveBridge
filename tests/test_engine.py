@@ -130,7 +130,7 @@ def test_symlink(fixture):
         with pytest.raises(e.SafetyError): plan(fixture)
     finally: link.unlink()
 
-def test_hardlink(fixture):
+def test_extra_source_alias_is_unsupported_layout(fixture):
     link = fixture[0] / 'evil'; os.link(fixture[0] / 'account.sav', link)
     with pytest.raises(e.SafetyError): plan(fixture)
 
@@ -188,3 +188,4 @@ def test_backup_copy_failure(fixture, monkeypatch):
     tx = next(fixture[2].iterdir())
     e.rollback(tx, True)
     assert e.load_transaction(tx)['state'] == 'rolled_back'
+
