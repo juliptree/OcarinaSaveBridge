@@ -1,8 +1,10 @@
-# Ocarina Save Bridge 1.0.0
+# Ocarina Save Bridge 1.0.1 candidate
+
+This corrected candidate is not a published release. Review/download manual builds from the repository's Actions page. Version 1.0.1 accepts regular-file hardlinks for read-only inspection, creates independent backup/staged copies, and preserves original hardlink relationships through complete-profile rollback.
+
+[Candidate builds](https://github.com/juliptree/OcarinaSaveBridge/actions/workflows/release.yml) · [Troubleshooting](TROUBLESHOOTING.md) · [Test results](TEST-RESULTS.md)
 
 A Windows x64 graphical application for transferring one compatible **Lichii / Eden → NX2navi** Ocarina of Time save snapshot. The game title directory must be `0400486024DEC000`. Reverse migration is not implemented.
-
-[Download the Windows release](https://github.com/juliptree/OcarinaSaveBridge/releases/latest) · [Troubleshooting](TROUBLESHOOTING.md) · [Test results](TEST-RESULTS.md)
 
 ## Run the application
 
@@ -35,7 +37,7 @@ A previous active transaction prevents another import into the same installation
 
 ## Safety boundaries
 
-All writes require explicit confirmation in the GUI. Symlinks, junctions, Windows reparse points, hardlinked/nonregular files, path traversal, unsafe overlapping roots, changed previews and incomplete backups are rejected. Windows no-overwrite rename and an OS lock serialize bridge operations. Process checks run before preview, staging activation and rollback, and fail closed on enumeration errors. Unexpected interruption is recoverable at rename boundaries.
+All writes require explicit confirmation in the GUI. Symlinks, junctions, Windows reparse points, nonregular files, path traversal, unsafe overlapping roots, changed previews and incomplete backups are rejected. Ordinary hardlinks to regular files are accepted for read-only inventory and preview. Every newly copied file is exclusively created with an independent identity; shared destinations are refused. Timestamps are set through the new destination handle, without reopening an existing path for metadata writes. Backups and staging are checked for link-count and identity isolation before activation. The original profile is renamed intact, so rollback restores its existing hardlink relationships. Windows no-overwrite rename and an OS lock serialize bridge operations. Process checks run before preview, staging activation and rollback, and fail closed on enumeration errors. Unexpected interruption is recoverable at rename boundaries.
 
 An external application can still be launched after a process check. Keep launchers closed; the bridge does not control other software or defend against a malicious same-user process racing filesystem changes. Power loss/disk corruption and deletion of all backup copies remain outside a filesystem tool's guarantees. Do not modify files during transfer. Normal application rights are preferred; administrator rights are not required for migration.
 
@@ -59,10 +61,11 @@ python -m pip --python .build-venv/Scripts/python.exe install -r requirements.tx
 .build-venv/Scripts/python.exe build.py
 ```
 
-`build.py` runs synthetic tests, collects dependency license texts, builds the one-file Windows executable using PyInstaller, launches the frozen executable in synthetic smoke mode, and creates `dist/OcarinaSaveBridge-1.0.0-win-x64.zip` plus SHA-256 sums. The ZIP contains the EXE, guides, test evidence, third-party notices and rebuildable original source. Python is required only to build or run the source. Pinned versions make the process reproducible; byte-for-byte identical executables are not claimed. Build outputs are replaceable; the build script never touches installed games or existing migration backups.
+`build.py` runs synthetic tests, collects dependency license texts, builds the one-file Windows executable using PyInstaller, launches the frozen executable in synthetic smoke mode, and creates `dist/OcarinaSaveBridge-1.0.1-win-x64.zip` plus SHA-256 sums. The ZIP contains the EXE, guides, test evidence, third-party notices and rebuildable original source. Python is required only to build or run the source. Pinned versions make the process reproducible; byte-for-byte identical executables are not claimed. Build outputs are replaceable; the build script never touches installed games or existing migration backups. The manual GitHub Actions workflow uses only `contents: read`, audits the candidate outputs, excludes raw XML/screenshots, and stores Actions artifacts without creating or publishing a GitHub Release.
 
 ## Architecture and license
 
 `bridge/engine.py` is a GUI-independent, filesystem-only transaction engine. `discovery.py` performs bounded read-only discovery. `thumbnails.py` extracts bounded JPEG streams without decoding proprietary fields. `gui.py` runs filesystem work on Qt worker threads. `smoke.py` exercises exclusively generated synthetic data for packaged validation. Future reverse migration should implement its own source/destination adapter and compatibility policy, retaining the same snapshot/backup discipline.
 
 Original application code is MIT licensed. See `LICENSE` and `THIRD-PARTY-NOTICES.md` for dependency terms and rebuild/relink instructions. No game files, game artwork, firmware, encryption keys or NX2navi implementation code are included. This is an independent utility, not affiliated with Nintendo, Lichii, Eden or NX2navi.
+
