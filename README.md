@@ -1,6 +1,6 @@
-# Ocarina Save Bridge 1.0.1 candidate
+# Ocarina Save Bridge 1.0.2 candidate
 
-This corrected candidate is not a published release. Review/download manual builds from the repository's Actions page. Version 1.0.1 accepts regular-file hardlinks for read-only inspection, creates independent backup/staged copies, and preserves original hardlink relationships through complete-profile rollback.
+This corrected candidate is not a published release. Review/download manual builds from the repository's Actions page. Version 1.0.2 adds launcher-linked NX2navi version detection and an explicit manual-unverified fallback. The 1.0.1 hardlink safeguards remain enabled.
 
 [Candidate builds](https://github.com/juliptree/OcarinaSaveBridge/actions/workflows/release.yml) · [Troubleshooting](TROUBLESHOOTING.md) · [Test results](TEST-RESULTS.md)
 
@@ -21,7 +21,11 @@ Extract the release ZIP and double-click **OcarinaSaveBridge.exe**. No Python in
 
 ## Compatibility and evidence
 
-The user reports a successful 14-file import into NX2navi **0.5.0**, with save timestamps, locations and thumbnails recognized. The workspace reports and controlled-import script document the filesystem approach but predate that successful runtime result. This release's tests use synthetic files, not game loader validation. Recognition does not establish compatibility for every save/game revision or guarantee save-and-reload behavior. VERSION metadata beside the selected game or its parent identifies the local version when available. Unrelated launcher metadata is not used to certify custom installations. Missing metadata is explicitly treated as unknown/experimental.
+The user reports a successful 14-file import into NX2navi **0.5.0**, with save timestamps, locations and thumbnails recognized. The workspace reports and controlled-import script document the filesystem approach but predate that successful runtime result. This release's tests use synthetic files, not game loader validation. Recognition does not establish compatibility for every save/game revision or guarantee save-and-reload behavior.
+
+Version detection checks VERSION beside the selected installation or its parent. It also checks the separate launcher's public metadata: `data/launcher.json` must explicitly associate `game_dir` with the selected game folder, and `app/current.txt` must agree with `app/<current>/VERSION`. Default per-user paths, the home AppData fallback, uninstall registration and the portable game/parent launcher layout are supported. A different launcher, an old version directory, update-feed `last_seen`, or a cache schema version never verifies the selected game. This is metadata recognition; it does not attest the executable's binary build. Conflicting, invalid, unsafe or missing associated metadata remains unknown.
+
+If automatic preview reports unknown, return to Choose folders and select **0.5.0 — manual, installation unverified**, or **Other version** and enter its version. Inspect again. Manual-only selections always remain unverified and require the experimental acknowledgement, including a manually selected 0.5.0. Manual selection cannot override a different automatically detected version. Recognized automatic 0.5.0 uses the prior import-recognition profile; other detected versions are labeled unsupported/unverified and require explicit experimental acknowledgement. The preview shows the version, source and compatibility status; Advanced log contains the precise metadata evidence without copying dump paths or credentials. Metadata is rechecked before transfer.
 
 The bridge does no binary conversion, UID generation or account rebinding. It transfers one coherent directory snapshot, never combines slots from different roots, and rejects incomplete slots. The title check is based on directory identity, not decoding the save payload.
 
@@ -61,7 +65,7 @@ python -m pip --python .build-venv/Scripts/python.exe install -r requirements.tx
 .build-venv/Scripts/python.exe build.py
 ```
 
-`build.py` runs synthetic tests, collects dependency license texts, builds the one-file Windows executable using PyInstaller, launches the frozen executable in synthetic smoke mode, and creates `dist/OcarinaSaveBridge-1.0.1-win-x64.zip` plus SHA-256 sums. The ZIP contains the EXE, guides, test evidence, third-party notices and rebuildable original source. Python is required only to build or run the source. Pinned versions make the process reproducible; byte-for-byte identical executables are not claimed. Build outputs are replaceable; the build script never touches installed games or existing migration backups. The manual GitHub Actions workflow uses only `contents: read`, audits the candidate outputs, excludes raw XML/screenshots, and stores Actions artifacts without creating or publishing a GitHub Release.
+`build.py` runs synthetic tests, collects dependency license texts, builds the one-file Windows executable using PyInstaller, launches the frozen executable in synthetic smoke mode, and creates `dist/OcarinaSaveBridge-1.0.2-win-x64.zip` plus SHA-256 sums. The ZIP contains the EXE, guides, test evidence, third-party notices and rebuildable original source. Python is required only to build or run the source. Pinned versions make the process reproducible; byte-for-byte identical executables are not claimed. Build outputs are replaceable; the build script never touches installed games or existing migration backups. The manual GitHub Actions workflow uses only `contents: read`, audits the candidate outputs, excludes raw XML/screenshots, and stores Actions artifacts without creating or publishing a GitHub Release.
 
 ## Architecture and license
 
