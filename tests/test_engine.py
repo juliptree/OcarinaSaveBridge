@@ -8,6 +8,8 @@ from bridge import engine as e
 @pytest.fixture
 def fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(e, 'closed', lambda: None)
+    from bridge import versions
+    monkeypatch.setattr(versions, 'default_launcher_roots', lambda: [])
     source = tmp_path / 'emulator' / e.TITLE
     source.mkdir(parents=True)
     for n in ['account.sav', 'option.sav'] + [f'slot_{i:02}/{f}.sav' for i in range(6) for f in ('caption', 'progress')]:
