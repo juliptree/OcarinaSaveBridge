@@ -17,6 +17,11 @@ def run(output):
     (profile / 'account.uid').write_bytes(bytes(range(16)))
     account = profile / 'save' / ('c' * 32); account.mkdir(parents=True)
     (account / 'account.sav').write_bytes(b'SYNTHETIC ORIGINAL')
+    aliases = []
+    for index in range(2):
+        alias = profile / 'save-backup' / f'synthetic-{index}' / 'account.sav'
+        alias.parent.mkdir(parents=True); os.link(account / 'account.sav', alias); aliases.append(alias)
+    original_identity = (account / 'account.sav').stat().st_ino
     (profile.parent / 'VERSION').write_text('0.5.0')
     # These paths are created exclusively above. Running real games are irrelevant to synthetic data.
     original_closed = e.closed
@@ -26,16 +31,23 @@ def run(output):
         w = Window(auto_detect=False)
         w.source.setEditText(str(source)); w.dest.setEditText(str(profile)); w.vault.setEditText(str(root / 'backups'))
         plan = e.preview(source, profile, root / 'backups')
+        assert plan['hardlinks']['destination']['hardlinked_files'] == 3
         w.review_plan(plan); w.show(); app.processEvents()
         assert w.table.rowCount() == 6
         assert w.grab().save(str(root / 'preview.png'))
         tx = e.transfer(plan, True)
         assert len(e.inventory(profile)['files']) == 15
+        e.private_tree(profile); e.private_tree(tx / 'original'); e.private_tree(tx / 'source')
+        assert (profile / 'save' / plan['account'] / 'account.sav').stat().st_ino != original_identity
         w.refresh(); assert w.transactions.count() == 1
         e.rollback(tx, True)
         assert e.inventory(profile) == plan['original']
+        assert (account / 'account.sav').stat().st_ino == original_identity
+        assert all(os.path.samefile(account / 'account.sav', alias) for alias in aliases)
         w.close(); app.processEvents()
         (root / 'result.json').write_text(json.dumps({'status': 'PASS', 'gui_preview': True, 'synthetic_transfer': True,
-            'complete_rollback': True, 'frozen': bool(getattr(__import__('sys'), 'frozen', False))}, indent=2))
+            'complete_rollback': True, 'hardlink_preview': True, 'independent_copies': True,
+            'hardlink_rollback': True, 'frozen': bool(getattr(__import__('sys'), 'frozen', False))}, indent=2))
     finally:
         e.closed = original_closed
+
