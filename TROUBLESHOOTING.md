@@ -12,7 +12,11 @@
 
 **Running application / cannot inspect processes:** Close Ocarina, NX2navi, Lichii, Eden and their launchers. Retry after processes exit. Do not disable the process guard. Renamed executables may not be recognized; all relevant applications must still be closed.
 
-**Unsafe link, junction, hardlink or backup folder:** Use ordinary local folders and files. Backups must be outside the application installation, game installation and source tree, with no ancestor overlap. Do not bypass reparse-point checks. A mounted folder/junction anywhere in the path is refused.
+**v1.0.0 “Nonregular/hardlinked file” at account.sav:** The old guard incorrectly refused ordinary hardlinked regular files used by native save backups. Use candidate 1.0.1. Do not delete native backups or break their hardlinks to work around this error. The corrected preview reports accepted hardlink paths; transfers create independent copies.
+
+**Unsafe symlink, junction, reparse point, nonregular file or backup folder:** These remain unsupported. Ordinary hardlinks to regular files are supported for reading. Backups must be outside the application installation, game installation and source tree, with no ancestor overlap. Do not bypass reparse-point checks. A mounted folder/junction anywhere in the path is refused.
+
+**“Refusing to write a shared file identity”:** An output/lock/staged/backup file is unexpectedly shared. The bridge refuses to write it or activate that stage. Preserve originals and use Recovery after an interrupted transaction; do not delete or edit shared saves to bypass the check. Originals are read only and copied using exclusively created independent destinations.
 
 **Preview changed:** Nothing is activated. Inspect and preview again after all writers have stopped. The bridge compares the complete destination tree and source hashes immediately before activation.
 
@@ -29,3 +33,4 @@
 **Windows blocks launch:** The EXE is unsigned. Verify the release's SHA-256 against `SHA256SUMS.txt` and follow your organization's software policy. A code-signing certificate is not included. Do not disable antivirus globally.
 
 **Qt fails to initialize:** Extract/re-download the complete release and check the temporary directory is writable. Rebuild from pinned source if required. Frozen smoke results describe the build machine only; a separate clean Windows machine without Python has not been independently tested.
+
