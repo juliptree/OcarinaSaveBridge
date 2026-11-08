@@ -8,7 +8,9 @@
 
 **Missing UID/account:** Run NX2navi manually, initialize the profile and create a save, then close both game and launcher. Select `profile`, not `save` or a temporary/native backup. With multiple accounts, choose the intended existing account in the dropdown.
 
-**Version unknown:** This is expected if the selected installation lacks nearby VERSION metadata. Even if the launcher is 0.5.0, a separate game installation is not certified from that alone. Review and explicitly accept the experimental warning only if appropriate for your installation.
+**Version unknown:** Version 1.0.2 also reads separate launcher metadata when `data/launcher.json` explicitly names the selected game folder and the current/version markers agree. If those files are absent, unsafe, inconsistent, or unrelated to this game folder, the version stays unknown. Return to Choose folders, select the manual version fallback, and inspect again. Manual-only 0.5.0 stays installation-unverified and still requires experimental acknowledgement. Do not edit NX2navi metadata or create a guessed VERSION file to bypass the warning. Advanced log shows the evidence and reason; launcher update-feed `last_seen` and build-cache schema numbers are not game-version evidence.
+
+**Unsupported version:** Only 0.5.0 has prior user-reported import recognition. Other versions have no tested compatibility profile in this utility and remain unsupported/unverified. An experimental acknowledgement is required to proceed. A manual 0.5.0 selection cannot downgrade or override automatically detected metadata for another version.
 
 **Running application / cannot inspect processes:** Close Ocarina, NX2navi, Lichii, Eden and their launchers. Retry after processes exit. Do not disable the process guard. Renamed executables may not be recognized; all relevant applications must still be closed.
 
