@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import re
-import shutil
+import stat
 import sys
 import uuid
 from pathlib import Path
@@ -27,7 +27,7 @@ def safe(path):
         if os.path.lexists(q):
             s = q.lstat()
             require(not q.is_symlink() and not getattr(s, 'st_file_attributes', 0) & 0x400,
-                    f'Unsafe link or reparse point: {q}')
+                    f'Unsafe symlink, junction or reparse point: {q}. Regular-file hardlinks are supported for reading.')
     return p
 
 def relative(name):
@@ -38,9 +38,36 @@ def relative(name):
             'Unsafe manifest path')
     return p
 
+def regular_stat(path):
+    p = safe(path)
+    s = p.lstat()
+    require(stat.S_ISREG(s.st_mode),
+            f'Unsupported nonregular file: {p}. Regular files, including hardlinks, are supported.')
+    return s
+
+def identity(s):
+    require(s.st_ino != 0, 'Filesystem does not provide a reliable file identity')
+    return s.st_dev, s.st_ino
+
+def readable_handle(path):
+    """Pin a regular file for read-only access; never treat a hardlink as a symlink."""
+    p = safe(path); before = regular_stat(p)
+    f = p.open('rb')
+    try:
+        require(identity(before) == identity(os.fstat(f.fileno())), f'File identity changed while opening: {p}')
+        regular_stat(p)
+    except BaseException:
+        f.close(); raise
+    return f
+
 def digest(path):
-    with safe(path).open('rb') as f:
-        return hashlib.file_digest(f, 'sha256').hexdigest()
+    with readable_handle(path) as f:
+        before = os.fstat(f.fileno())
+        result = hashlib.file_digest(f, 'sha256').hexdigest()
+        after = os.fstat(f.fileno())
+        require((before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns)
+                and identity(after) == identity(regular_stat(path)), f'File changed during hashing: {path}')
+        return result
 
 def inventory(root):
     root = safe(root)
@@ -54,9 +81,53 @@ def inventory(root):
             if p.is_dir():
                 dirs.append(r)
             else:
-                require(p.is_file() and p.stat().st_nlink == 1, f'Nonregular/hardlinked file: {p}')
-                files[r] = {'sha256': digest(p), 'bytes': p.stat().st_size}
+                s = regular_stat(p)
+                files[r] = {'sha256': digest(p), 'bytes': s.st_size}
     return {'files': files, 'directories': sorted(dirs)}
+
+def hardlink_summary(root, inv):
+    groups = {}
+    linked = 0
+    for name in inv['files']:
+        s = regular_stat(Path(root) / relative(name))
+        linked += s.st_nlink > 1
+        groups.setdefault(identity(s), []).append(name)
+    return {'hardlinked_files': linked, 'shared_identity_groups': sum(len(names) > 1 for names in groups.values())}
+
+def private_handle(f, source_identity=None):
+    s = os.fstat(f.fileno())
+    require(stat.S_ISREG(s.st_mode) and not getattr(s, 'st_file_attributes', 0) & 0x400,
+            'Refusing to write a nonregular or reparse-point destination')
+    require(s.st_nlink == 1 and (source_identity is None or identity(s) != source_identity),
+            'Refusing to write a shared file identity. Hardlinks are safe to read, but copies must be independent.')
+    return s
+
+def private_tree(root):
+    inv = inventory(root)
+    seen = set()
+    for name in inv['files']:
+        s = regular_stat(Path(root) / relative(name)); key = identity(s)
+        require(s.st_nlink == 1 and key not in seen,
+                'Backup/staged copy shares a file identity; refusing activation. Originals were not written.')
+        seen.add(key)
+
+def copy_times(f, source_stat):
+    # Set timestamps through the newly created handle, never by reopening a path.
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+        def timestamp(ns):
+            ticks = ns // 100 + 116444736000000000
+            return wintypes.FILETIME(ticks & 0xffffffff, ticks >> 32)
+        access, modified = timestamp(source_stat.st_atime_ns), timestamp(source_stat.st_mtime_ns)
+        fn = ctypes.WinDLL('kernel32', use_last_error=True).SetFileTime
+        fn.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME)]
+        fn.restype = wintypes.BOOL
+        if not fn(msvcrt.get_osfhandle(f.fileno()), None, ctypes.byref(access), ctypes.byref(modified)):
+            raise ctypes.WinError(ctypes.get_last_error())
+    else:
+        os.utime(f.fileno(), ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
 
 def closed():
     import psutil
@@ -74,11 +145,18 @@ def copy_file(src, dst, expected):
             f'Source changed: {src}')
     dst.parent.mkdir(parents=True, exist_ok=True)
     safe(dst.parent)
-    with src.open('rb') as i, dst.open('xb') as o:
-        shutil.copyfileobj(i, o, 1024 * 1024)
+    with readable_handle(src) as i, dst.open('xb') as o:
+        source_stat = os.fstat(i.fileno()); key = identity(source_stat)
+        private_handle(o, key)
+        while chunk := i.read(1024 * 1024):
+            private_handle(o, key)
+            o.write(chunk)
         o.flush()
         os.fsync(o.fileno())
-    shutil.copystat(src, dst, follow_symlinks=False)
+        private_handle(o, key)
+        require(identity(regular_stat(dst)) == identity(os.fstat(o.fileno())), 'Copy destination path changed')
+        copy_times(o, source_stat)
+    require(regular_stat(dst).st_nlink == 1 and identity(regular_stat(dst)) != key, 'Copy is not independent')
     require(digest(src) == expected['sha256'] == digest(dst), f'Copy verification failed: {dst}')
 
 def copy_tree(src, dst, inv):
@@ -88,6 +166,7 @@ def copy_tree(src, dst, inv):
     for name, meta in inv['files'].items():
         copy_file(src / relative(name), dst / relative(name), meta)
     require(inventory(src) == inv == inventory(dst), 'Snapshot changed during backup')
+    private_tree(dst)
 
 def source_snapshot(root):
     root = safe(root)
@@ -143,16 +222,19 @@ def preview(source, profile, vault=None, account=None):
     files = source_snapshot(source)
     inv, account = destination(profile, account)
     return {'source': str(source), 'profile': str(profile), 'vault': str(vault), 'account': account,
-            'source_files': files, 'original': inv, 'version': version_of(profile)}
+            'source_files': files, 'original': inv, 'version': version_of(profile),
+            'hardlinks': {'source': hardlink_summary(source, {'files': files}), 'destination': hardlink_summary(profile, inv)}}
 
 def write_json(path, data):
     safe(path)
     # A terminated writer may leave its temp file behind; never let that block recovery.
     temp = path.with_name(path.name + '.' + uuid.uuid4().hex + '.new')
     with safe(temp).open('x', encoding='utf-8') as f:
+        private_handle(f)
         json.dump(data, f, indent=2, sort_keys=True)
         f.flush()
         os.fsync(f.fileno())
+        private_handle(f)
     os.replace(temp, path)
 
 @contextlib.contextmanager
@@ -160,6 +242,7 @@ def profile_lock(profile):
     # OS advisory lock releases automatically even after process termination.
     p = safe(profile.parent / '.ocarina-save-bridge.lock')
     with p.open('a+b') as f:
+        private_handle(f)
         if f.tell() == 0:
             f.write(b'0'); f.flush()
         f.seek(0)
@@ -214,6 +297,9 @@ def transfer(plan, confirmed=False, experimental=False, progress=lambda s: None,
         record['staged'] = inventory(stage)
         state('ready')
         closed()
+        private_tree(stage)
+        private_tree(tx / 'original')
+        private_tree(tx / 'source')
         require(inventory(profile) == plan['original'] and source_snapshot(source) == plan['source_files'], 'Live files changed; operation stopped')
         state('before_archive')
         move(profile, archive)
@@ -276,3 +362,4 @@ def rollback(tx, confirmed=False, progress=lambda s: None, fault=lambda s: None)
         data['state'] = 'rolled_back'
         write_json(tx / 'transaction.json', data)
         progress('Complete original profile restored; imported trial and backups retained')
+
