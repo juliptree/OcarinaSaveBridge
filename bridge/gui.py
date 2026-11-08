@@ -7,7 +7,7 @@ from PySide6.QtGui import QPixmap, QImageReader, QFontDatabase, QFont
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QComboBox, QFileDialog, QTabWidget, QPlainTextEdit, QTableWidget,
-    QTableWidgetItem, QHeaderView, QProgressBar, QMessageBox, QCheckBox, QGroupBox)
+    QTableWidgetItem, QHeaderView, QProgressBar, QMessageBox, QCheckBox, QGroupBox, QLineEdit)
 from . import __version__
 from . import engine as e
 from .discovery import discover, scan
@@ -22,7 +22,7 @@ QPushButton { background: #29374b; border: 1px solid #40516a; border-radius: 6px
 QPushButton:hover { background: #38516b; }
 QPushButton:disabled { color: #657488; background: #1e2734; }
 QPushButton#primary { background: #206d59; border-color: #3ca185; }
-QComboBox, QPlainTextEdit, QTableWidget { background: #1b2533; border: 1px solid #3c4b60; padding: 6px; selection-background-color: #286d62; }
+QComboBox, QLineEdit, QPlainTextEdit, QTableWidget { background: #1b2533; border: 1px solid #3c4b60; padding: 6px; selection-background-color: #286d62; }
 QComboBox QAbstractItemView { background: #253246; }
 QHeaderView::section { background: #29374b; padding: 8px; border: 0; }
 QTabBar::tab { background: #1b2533; padding: 12px 22px; }
@@ -70,6 +70,15 @@ class Window(QMainWindow):
         self.dest = self.folder_row(sl, '2   NX2navi profile folder', 'destination')
         self.account = QComboBox(); sl.addWidget(QLabel('Destination account (existing folder; identity is preserved)')); sl.addWidget(self.account)
         self.dest.currentTextChanged.connect(self.accounts)
+        sl.addWidget(QLabel('NX2navi version — automatic metadata detection or explicit manual fallback'))
+        version_row = QHBoxLayout(); sl.addLayout(version_row)
+        self.version_mode = QComboBox()
+        self.version_mode.addItems(['Automatic detection (recommended)', '0.5.0 — manual, installation unverified', 'Other version — manual, unverified'])
+        version_row.addWidget(self.version_mode, 1)
+        self.manual_version = QLineEdit(); self.manual_version.setPlaceholderText('Example: 0.6.0'); self.manual_version.setVisible(False)
+        version_row.addWidget(self.manual_version)
+        self.version_mode.currentIndexChanged.connect(self.version_changed)
+        self.manual_version.textChanged.connect(self.invalidate)
         self.vault = self.folder_row(sl, '3   Backup folder — outside the game and application folders', 'vault')
         self.vault.setEditText(str(e.default_vault()))
         buttons = QHBoxLayout(); sl.addLayout(buttons)
@@ -143,6 +152,10 @@ class Window(QMainWindow):
     def invalidate(self, *_):
         self.plan = None; self.go.setEnabled(False); self.ack.setChecked(False)
 
+    def version_changed(self, *_):
+        self.manual_version.setVisible(self.version_mode.currentIndex() == 2)
+        self.invalidate()
+
     def accounts(self, *_):
         self.account.clear()
         try:
@@ -179,15 +192,18 @@ class Window(QMainWindow):
         self.run_job(lambda update: discover(), done)
 
     def inspect(self):
-        args = self.source.currentText(), self.dest.currentText(), self.vault.currentText(), self.account.currentText() or None
+        manual = None if self.version_mode.currentIndex() == 0 else '0.5.0' if self.version_mode.currentIndex() == 1 else self.manual_version.text().strip()
+        args = self.source.currentText(), self.dest.currentText(), self.vault.currentText(), self.account.currentText() or None, manual
         self.invalidate()
         self.run_job(lambda update: e.preview(*args), self.review_plan)
 
     def review_plan(self, plan):
         self.plan = plan; self.go.setEnabled(True); self.ack.setChecked(False); self.experimental.setChecked(False)
-        self.experimental.setVisible(plan['version'] != '0.5.0')
+        info = plan['version_info']
+        self.experimental.setVisible(info['experimental'])
         def wrap(path): return str(path).replace('\\', '\\\u200b').replace('/', '/\u200b')
-        self.summary.setText(f'NX2navi version: {plan["version"]} — ' + ('0.5.0 has user-reported import recognition.' if plan['version'] == '0.5.0' else 'EXPERIMENTAL: this version/installation is unverified.') +
+        evidence = ', '.join(item['kind'] for item in info['evidence']) or 'no associated metadata'
+        self.summary.setText(f'NX2navi version: {plan["version"]} — {info["label"]}\nDetection: {info["origin"]}; automatic result: {info["detected_version"]}; {evidence}.' +
             f'\nSource: {wrap(plan["source"])}\n{len(plan["source_files"])} source files → {wrap(Path(plan["profile"]) / "save" / plan["account"])}\n'
             f'Preserve {len(plan["original"]["files"])} original files, including account.uid, native backups and transaction state.\n'
             f'Verified backup location: {wrap(plan["vault"])}\nThe fresh active profile contains only account.uid and this snapshot; full original retained.')
@@ -200,7 +216,9 @@ class Window(QMainWindow):
             p = Path(plan['source']) / slot / 'progress.sav'
             values = [slot, datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S'), str(p.stat().st_size)]
             for col, v in enumerate(values): self.table.setItem(row, col, QTableWidgetItem(v))
-        self.tabs.setCurrentIndex(1); self.append('Preview verified. No save files modified.')
+        self.tabs.setCurrentIndex(1)
+        self.append('Version detection: ' + json.dumps(info, ensure_ascii=False))
+        self.append('Filesystem preview verified. No save files modified. Compatibility: ' + info['status'])
 
     def show_thumbnail(self):
         if not self.plan or self.table.currentRow() < 0: return
@@ -220,7 +238,7 @@ class Window(QMainWindow):
     def start_transfer(self):
         if not self.plan or not self.ack.isChecked():
             QMessageBox.information(self, 'Review required', 'Review the preview and check the replacement acknowledgement.'); return
-        if self.plan['version'] != '0.5.0' and not self.experimental.isChecked():
+        if self.plan['version_info']['experimental'] and not self.experimental.isChecked():
             QMessageBox.information(self, 'Experimental compatibility', 'This NX2navi version is unverified. Explicit acknowledgement is required.'); return
         if QMessageBox.question(self, 'Confirm profile replacement', f'Replace the complete profile at:\n{self.plan["profile"]}\n\nA verified backup will be created at:\n{self.plan["vault"]}\n\nKeep both applications closed until completion.', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes: return
         plan = self.plan; experimental = self.experimental.isChecked(); self.invalidate()
