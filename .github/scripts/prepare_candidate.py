@@ -77,13 +77,15 @@ def main():
     total = sum(int(s.get('tests', 0)) for s in suites)
     failed = sum(int(s.get('failures', 0)) + int(s.get('errors', 0)) for s in suites)
     skipped = sum(int(s.get('skipped', 0)) for s in suites)
-    require(total >= 45 and failed == 0, 'Full test suite did not pass')
+    require(total >= 57 and failed == 0, 'Full test suite did not pass')
     summary = {'tests': total, 'passed': total - skipped, 'skipped': skipped, 'failures_and_errors': failed,
                'skipped_tests': [c.get('name') for c in xml.iter('testcase') if c.find('skipped') is not None], 'synthetic_data_only': True}
     smoke = json.loads((ROOT / 'frozen-smoke-results.json').read_text())
     require(smoke.get('status') == 'PASS' and smoke.get('frozen') is True, 'Frozen validation failed')
+    require(all(smoke.get(check) is True for check in ('hardlink_preview', 'independent_copies', 'hardlink_rollback')),
+            'Frozen hardlink preview/copy/rollback validation did not pass')
     exe = ROOT / 'dist' / 'OcarinaSaveBridge.exe'; audit_exe(exe)
-    original = ROOT / 'dist' / 'OcarinaSaveBridge-1.0.0-win-x64.zip'; entries = {}
+    original = ROOT / 'dist' / 'OcarinaSaveBridge-1.0.1-win-x64.zip'; entries = {}
     with zipfile.ZipFile(original) as z:
         require(z.testzip() is None, 'Input ZIP integrity failed')
         for item in z.infolist():
