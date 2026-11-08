@@ -201,19 +201,13 @@ def destination(profile, account=None):
     return inv, account or accounts[0]
 
 def version_of(profile):
-    candidates = [Path(profile).parent / 'VERSION', Path(profile).parent.parent / 'VERSION']
-    for p in candidates:
-        if p.is_file():
-            safe(p)
-            v = p.read_text(encoding='utf-8').strip()
-            if re.fullmatch(r'\d+\.\d+\.\d+', v):
-                return v
-    return 'unknown'
+    from .versions import version_details
+    return version_details(profile)['version']
 
 def default_vault():
     return Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'OcarinaSaveBridge' / 'Backups'
 
-def preview(source, profile, vault=None, account=None):
+def preview(source, profile, vault=None, account=None, manual_version=None):
     closed()
     source, profile, vault = safe(source), safe(profile), safe(vault or default_vault())
     for a, b in ((source, profile), (vault, profile.parent), (vault, source),
@@ -221,8 +215,10 @@ def preview(source, profile, vault=None, account=None):
         require(not a.is_relative_to(b) and not b.is_relative_to(a), f'Overlapping/unsafe roots: {a} / {b}')
     files = source_snapshot(source)
     inv, account = destination(profile, account)
+    from .versions import version_details
+    version_info = version_details(profile, manual_version)
     return {'source': str(source), 'profile': str(profile), 'vault': str(vault), 'account': account,
-            'source_files': files, 'original': inv, 'version': version_of(profile),
+            'source_files': files, 'original': inv, 'version': version_info['version'], 'version_info': version_info,
             'hardlinks': {'source': hardlink_summary(source, {'files': files}), 'destination': hardlink_summary(profile, inv)}}
 
 def write_json(path, data):
@@ -264,10 +260,11 @@ def move(src, dst):
 
 def transfer(plan, confirmed=False, experimental=False, progress=lambda s: None, fault=lambda s: None):
     require(confirmed, 'Explicit replacement confirmation required')
-    require(plan['version'] == '0.5.0' or experimental, 'Experimental version acknowledgement required')
+    require(not plan.get('version_info', {'experimental': plan['version'] != '0.5.0'})['experimental'] or experimental,
+            'Experimental version acknowledgement required')
     profile, source, vault = (safe(plan[k]) for k in ('profile', 'source', 'vault'))
     with profile_lock(profile):
-        fresh = preview(source, profile, vault, plan['account'])
+        fresh = preview(source, profile, vault, plan['account'], plan.get('version_info', {}).get('manual_version'))
         require(fresh == plan, 'Files or compatibility changed since preview. Preview again.')
         require(not list(profile.parent.glob('.osb-original-*')) and not list(profile.parent.glob('.osb-stage-*')),
                 'A previous transfer or interruption exists here. Use Recovery before starting another transfer.')
