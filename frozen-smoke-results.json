@@ -1,0 +1,7 @@
+{
+  "status": "PASS",
+  "gui_preview": true,
+  "synthetic_transfer": true,
+  "complete_rollback": true,
+  "frozen": true
+}
