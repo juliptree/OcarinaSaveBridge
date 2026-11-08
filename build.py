@@ -10,6 +10,7 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from bridge import __version__
 
 ROOT = Path(__file__).resolve().parent
 
@@ -55,7 +56,7 @@ def main():
     if result.get('status') != 'PASS' or not result.get('frozen'): raise RuntimeError('Frozen validation failed')
     shutil.copyfile(smoke / 'result.json', ROOT / 'frozen-smoke-results.json')
     shutil.copyfile(smoke / 'preview.png', ROOT / 'GUI-preview.png')
-    release = ROOT / 'dist' / 'OcarinaSaveBridge-1.0.0-win-x64.zip'
+    release = ROOT / 'dist' / f'OcarinaSaveBridge-{__version__}-win-x64.zip'
     with zipfile.ZipFile(release, 'w', zipfile.ZIP_DEFLATED) as z:
         z.write(exe, exe.name)
         for name in ('README.md', 'TROUBLESHOOTING.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'TEST-RESULTS.md', 'test-results.xml', 'frozen-smoke-results.json', 'build-environment.json', 'GUI-preview.png'):
@@ -80,3 +81,4 @@ def main():
     print('Synthetic-only test artifacts:', test_dir, smoke)
 
 if __name__ == '__main__': main()
+
